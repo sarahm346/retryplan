@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "retryplan"
+version = "0.1.0"
+description = "Preview retry-policy delay schedules from the command line"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "sarahm346" }]
+
+[project.scripts]
+retryplan = "retryplan.cli:main"
+
+[tool.setuptools]
+packages = ["retryplan"]
