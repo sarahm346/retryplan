@@ -49,6 +49,30 @@ Linear backoff (fixed increment per attempt) and plain fixed-delay retries
 are also supported via `--strategy linear` and `--strategy fixed`. Run
 `retryplan --help` for the full option list.
 
+Pass `--format json` to get the same schedule as JSON, for feeding into
+another script instead of reading it off a terminal:
+
+```
+$ retryplan --strategy fixed --base 1 --attempts 3 --format json
+{
+  "attempts": [
+    {
+      "attempt": 1,
+      "delay_seconds": 1.0
+    },
+    {
+      "attempt": 2,
+      "delay_seconds": 1.0
+    },
+    {
+      "attempt": 3,
+      "delay_seconds": 1.0
+    }
+  ],
+  "total_wait_seconds": 3.0
+}
+```
+
 ## Why
 
 Backoff math is easy to get wrong in ways that only show up in production:

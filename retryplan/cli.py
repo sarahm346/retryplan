@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import argparse
+import json
 import random
 import sys
 
@@ -62,6 +63,12 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         default=None,
         help="seed for the jitter random generator, for reproducible output",
     )
+    parser.add_argument(
+        "--format",
+        choices=("table", "json"),
+        default="table",
+        help="output format (default: table)",
+    )
     return parser.parse_args(argv)
 
 
@@ -72,6 +79,17 @@ def format_table(delays: list[float]) -> str:
     lines.append("")
     lines.append(f"total wait: {total_wait(delays):.3f}s")
     return "\n".join(lines)
+
+
+def format_json(delays: list[float]) -> str:
+    payload = {
+        "attempts": [
+            {"attempt": attempt, "delay_seconds": delay}
+            for attempt, delay in enumerate(delays, start=1)
+        ],
+        "total_wait_seconds": total_wait(delays),
+    }
+    return json.dumps(payload, indent=2)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -94,7 +112,10 @@ def main(argv: list[str] | None = None) -> int:
         print(f"retryplan: {exc}", file=sys.stderr)
         return 1
 
-    print(format_table(delays))
+    if args.format == "json":
+        print(format_json(delays))
+    else:
+        print(format_table(delays))
     return 0
 
 
