@@ -45,6 +45,23 @@ Add jitter so you can see roughly what a jittered schedule looks like
 $ retryplan --strategy exponential --base 0.5 --jitter full --seed 1
 ```
 
+Decorrelated jitter is different from full/equal jitter: each delay is
+drawn between the base delay and three times the *previous* delay, rather
+than being derived from the raw backoff value for that attempt. That means
+it can grow without bound unless you also pass `--max-delay`:
+
+```
+$ retryplan --strategy exponential --base 0.5 --jitter decorrelated --max-delay 20 --seed 1
+```
+
+As long as `--max-delay` is set, `--factor` and `--increment` have no effect
+on a decorrelated schedule, since each delay is computed from the previous
+delay and the cap rather than from the strategy's own growth curve; only
+`--base`, `--max-delay`, and `--attempts` matter. (Leave `--max-delay` unset
+and the first delay falls back to the strategy's raw value, so those flags
+briefly matter again -- another reason to always pass `--max-delay` with
+decorrelated jitter.)
+
 Linear backoff (fixed increment per attempt) and plain fixed-delay retries
 are also supported via `--strategy linear` and `--strategy fixed`. Run
 `retryplan --help` for the full option list.
