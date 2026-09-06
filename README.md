@@ -90,6 +90,43 @@ $ retryplan --strategy fixed --base 1 --attempts 3 --format json
 }
 ```
 
+## Saved policies
+
+Typing the same flags for a policy you check often gets old. Put it in an
+INI-style config file instead, one section per named policy:
+
+```ini
+[prod-api]
+strategy = exponential
+base = 0.5
+factor = 2
+attempts = 6
+max-delay = 10
+jitter = full
+seed = 42
+```
+
+Then load it with `--config` and `--policy`:
+
+```
+$ retryplan --config policies.ini --policy prod-api
+```
+
+Any other flag on the command line overrides the value from the policy, so
+you can check a variant without editing the file:
+
+```
+$ retryplan --config policies.ini --policy prod-api --attempts 10
+```
+
+`--list-policies` prints the section names in a config file without running
+anything:
+
+```
+$ retryplan --config policies.ini --list-policies
+prod-api
+```
+
 ## Why
 
 Backoff math is easy to get wrong in ways that only show up in production:
