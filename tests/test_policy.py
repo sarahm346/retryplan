@@ -96,6 +96,21 @@ class BuildScheduleTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             build_schedule("fixed", attempts=0, base_seconds=1.0)
 
+    def test_fixed_strategy_respects_max_delay(self):
+        delays = build_schedule("fixed", attempts=3, base_seconds=10.0, max_delay=5.0)
+        self.assertEqual(delays, [5.0, 5.0, 5.0])
+
+    def test_fixed_strategy_jitter_stays_under_max_delay(self):
+        delays = build_schedule(
+            "fixed",
+            attempts=20,
+            base_seconds=10.0,
+            max_delay=5.0,
+            jitter="full",
+            rand=random.Random(0),
+        )
+        self.assertTrue(all(delay <= 5.0 for delay in delays))
+
 
 class TotalWaitTests(unittest.TestCase):
     def test_sums_delays(self):

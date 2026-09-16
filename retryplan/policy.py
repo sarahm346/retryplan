@@ -108,6 +108,8 @@ def build_schedule(
     for attempt in range(1, attempts + 1):
         if strategy == "fixed":
             raw = fixed_delay(base_seconds)
+            if max_delay is not None:
+                raw = min(raw, max_delay)
         elif strategy == "linear":
             raw = linear_delay(attempt, base_seconds, increment_seconds)
             if max_delay is not None:
