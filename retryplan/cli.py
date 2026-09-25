@@ -99,6 +99,13 @@ def parse_args(argv: list[str]) -> argparse.Namespace:
         action="store_true",
         help="print the policy names defined in --config and exit",
     )
+    parser.add_argument(
+        "--compare",
+        nargs=2,
+        metavar=("POLICY_A", "POLICY_B"),
+        default=None,
+        help="print two named policies from --config side by side instead of running one",
+    )
     return parser.parse_args(argv)
 
 
@@ -117,6 +124,64 @@ def resolve_policy_values(args: argparse.Namespace) -> dict[str, object]:
         if hasattr(args, key):
             values[key] = getattr(args, key)
     return values
+
+
+def resolve_named_policy_values(config: str, name: str) -> dict[str, object]:
+    """DEFAULTS overridden by one named policy section, with no CLI flags in play.
+
+    Used by --compare, where two policies are shown side by side and there is
+    no single set of CLI flags that could unambiguously override both.
+    """
+    values = dict(DEFAULTS)
+    values.update(load_policy(config, name))
+    return values
+
+
+def build_schedule_from_values(values: dict[str, object]) -> list[float]:
+    rand = random.Random(values["seed"]) if values["jitter"] else None
+    return build_schedule(
+        strategy=values["strategy"],
+        attempts=values["attempts"],
+        base_seconds=values["base"],
+        factor=values["factor"],
+        increment_seconds=values["increment"],
+        max_delay=values["max_delay"],
+        jitter=values["jitter"],
+        rand=rand,
+    )
+
+
+def format_compare_table(name_a: str, delays_a: list[float], name_b: str, delays_b: list[float]) -> str:
+    width_a = max(len(name_a), 9)
+    width_b = max(len(name_b), 9)
+    header = f"attempt  {name_a:>{width_a}}  {name_b:>{width_b}}  diff"
+    lines = [header]
+    for attempt in range(1, max(len(delays_a), len(delays_b)) + 1):
+        a = delays_a[attempt - 1] if attempt <= len(delays_a) else None
+        b = delays_b[attempt - 1] if attempt <= len(delays_b) else None
+        a_str = f"{a:>{width_a}.3f}" if a is not None else f"{'-':>{width_a}}"
+        b_str = f"{b:>{width_b}.3f}" if b is not None else f"{'-':>{width_b}}"
+        diff_str = f"{b - a:+.3f}" if a is not None and b is not None else "-"
+        lines.append(f"{attempt:>7}  {a_str}  {b_str}  {diff_str}")
+    lines.append("")
+    lines.append(
+        f"total wait: {name_a} {total_wait(delays_a):.3f}s, "
+        f"{name_b} {total_wait(delays_b):.3f}s"
+    )
+    return "\n".join(lines)
+
+
+def format_compare_json(name_a: str, delays_a: list[float], name_b: str, delays_b: list[float]) -> str:
+    def payload(delays: list[float]) -> dict[str, object]:
+        return {
+            "attempts": [
+                {"attempt": attempt, "delay_seconds": delay}
+                for attempt, delay in enumerate(delays, start=1)
+            ],
+            "total_wait_seconds": total_wait(delays),
+        }
+
+    return json.dumps({"policies": {name_a: payload(delays_a), name_b: payload(delays_b)}}, indent=2)
 
 
 def format_table(delays: list[float]) -> str:
@@ -155,6 +220,37 @@ def main(argv: list[str] | None = None) -> int:
             print(name)
         return 0
 
+    if args.compare:
+        if not args.config:
+            print("retryplan: --compare requires --config", file=sys.stderr)
+            return 1
+        name_a, name_b = args.compare
+        try:
+            values_a = resolve_named_policy_values(args.config, name_a)
+            values_b = resolve_named_policy_values(args.config, name_b)
+        except FileNotFoundError:
+            print(f"retryplan: config file not found: {args.config}", file=sys.stderr)
+            return 1
+        except KeyError as exc:
+            print(f"retryplan: no policy named {exc.args[0]!r} in {args.config}", file=sys.stderr)
+            return 1
+        except ValueError as exc:
+            print(f"retryplan: {exc}", file=sys.stderr)
+            return 1
+
+        try:
+            delays_a = build_schedule_from_values(values_a)
+            delays_b = build_schedule_from_values(values_b)
+        except ValueError as exc:
+            print(f"retryplan: {exc}", file=sys.stderr)
+            return 1
+
+        if args.format == "json":
+            print(format_compare_json(name_a, delays_a, name_b, delays_b))
+        else:
+            print(format_compare_table(name_a, delays_a, name_b, delays_b))
+        return 0
+
     try:
         values = resolve_policy_values(args)
     except FileNotFoundError:
@@ -167,19 +263,8 @@ def main(argv: list[str] | None = None) -> int:
         print(f"retryplan: {exc}", file=sys.stderr)
         return 1
 
-    rand = random.Random(values["seed"]) if values["jitter"] else None
-
     try:
-        delays = build_schedule(
-            strategy=values["strategy"],
-            attempts=values["attempts"],
-            base_seconds=values["base"],
-            factor=values["factor"],
-            increment_seconds=values["increment"],
-            max_delay=values["max_delay"],
-            jitter=values["jitter"],
-            rand=rand,
-        )
+        delays = build_schedule_from_values(values)
     except ValueError as exc:
         print(f"retryplan: {exc}", file=sys.stderr)
         return 1

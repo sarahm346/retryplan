@@ -5,7 +5,7 @@ from contextlib import redirect_stderr, redirect_stdout
 from io import StringIO
 from pathlib import Path
 
-from retryplan.cli import format_json, format_table, main
+from retryplan.cli import format_compare_json, format_compare_table, format_json, format_table, main
 
 
 class FormatJsonTests(unittest.TestCase):
@@ -50,6 +50,26 @@ class FormatTableTests(unittest.TestCase):
         self.assertIn("total wait: 3.000s", table)
 
 
+class FormatCompareTableTests(unittest.TestCase):
+    def test_diff_column(self):
+        table = format_compare_table("a", [1.0, 2.0], "b", [1.0, 3.0])
+        self.assertIn("+0.000", table)
+        self.assertIn("+1.000", table)
+        self.assertIn("total wait: a 3.000s, b 4.000s", table)
+
+    def test_mismatched_lengths_pad_with_dashes(self):
+        table = format_compare_table("a", [1.0], "b", [1.0, 2.0])
+        lines = table.splitlines()
+        self.assertIn("-", lines[2])
+
+
+class FormatCompareJsonTests(unittest.TestCase):
+    def test_shape(self):
+        payload = json.loads(format_compare_json("a", [1.0], "b", [1.0, 2.0]))
+        self.assertEqual(payload["policies"]["a"]["total_wait_seconds"], 1.0)
+        self.assertEqual(payload["policies"]["b"]["total_wait_seconds"], 3.0)
+
+
 class PolicyConfigTests(unittest.TestCase):
     def setUp(self):
         self.tmpdir = tempfile.TemporaryDirectory()
@@ -59,6 +79,11 @@ class PolicyConfigTests(unittest.TestCase):
             "[prod-api]\n"
             "strategy = fixed\n"
             "base = 2\n"
+            "attempts = 3\n"
+            "\n"
+            "[staging-api]\n"
+            "strategy = fixed\n"
+            "base = 1\n"
             "attempts = 3\n"
         )
 
@@ -112,7 +137,43 @@ class PolicyConfigTests(unittest.TestCase):
         with redirect_stdout(out):
             code = main(["--config", str(self.config_path), "--list-policies"])
         self.assertEqual(code, 0)
-        self.assertEqual(out.getvalue().splitlines(), ["prod-api"])
+        self.assertEqual(out.getvalue().splitlines(), ["prod-api", "staging-api"])
+
+    def test_compare_two_policies(self):
+        out = StringIO()
+        with redirect_stdout(out):
+            code = main(
+                [
+                    "--config", str(self.config_path),
+                    "--compare", "prod-api", "staging-api",
+                    "--format", "json",
+                ]
+            )
+        self.assertEqual(code, 0)
+        payload = json.loads(out.getvalue())
+        self.assertEqual(payload["policies"]["prod-api"]["total_wait_seconds"], 6.0)
+        self.assertEqual(payload["policies"]["staging-api"]["total_wait_seconds"], 3.0)
+
+    def test_compare_table_is_default_format(self):
+        out = StringIO()
+        with redirect_stdout(out):
+            main(["--config", str(self.config_path), "--compare", "prod-api", "staging-api"])
+        self.assertIn("prod-api", out.getvalue())
+        self.assertIn("staging-api", out.getvalue())
+
+    def test_compare_requires_config(self):
+        err = StringIO()
+        with redirect_stderr(err):
+            code = main(["--compare", "prod-api", "staging-api"])
+        self.assertEqual(code, 1)
+        self.assertIn("--config", err.getvalue())
+
+    def test_compare_unknown_policy_is_a_clean_error(self):
+        err = StringIO()
+        with redirect_stderr(err):
+            code = main(["--config", str(self.config_path), "--compare", "prod-api", "nope"])
+        self.assertEqual(code, 1)
+        self.assertIn("nope", err.getvalue())
 
 
 if __name__ == "__main__":

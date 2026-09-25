@@ -127,6 +127,38 @@ $ retryplan --config policies.ini --list-policies
 prod-api
 ```
 
+Use `--compare` to put two saved policies side by side instead of picking one.
+Say the config file also has these two sections:
+
+```ini
+[fast]
+strategy = exponential
+base = 0.5
+factor = 2
+attempts = 3
+
+[slow]
+strategy = exponential
+base = 1
+factor = 1.5
+attempts = 3
+```
+
+```
+$ retryplan --config policies.ini --compare fast slow
+attempt       fast       slow  diff
+      1      0.500      1.000  +0.500
+      2      1.000      1.500  +0.500
+      3      2.000      2.250  +0.250
+
+total wait: fast 3.500s, slow 4.750s
+```
+
+`--compare` reads both policies straight from the config file; unlike
+`--policy`, other flags on the command line aren't applied to either side,
+since it isn't clear which of the two they'd be overriding. `--format json`
+works with `--compare` too, and nests each policy's schedule under its name.
+
 ## Why
 
 Backoff math is easy to get wrong in ways that only show up in production:
